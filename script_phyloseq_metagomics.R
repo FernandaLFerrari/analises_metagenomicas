@@ -19,7 +19,7 @@
 ## curatedMetagenomicData - pacote do bioconductor para lidar com dados 
 ## metagenomicos oriundos do metaphlan e do humann 
 ## RColorBrewer - pacote de palettas de cores
-
+## microbione - analises do microbioma
 
 
 library(tidyverse)
@@ -27,13 +27,15 @@ library(jcolors)
 library(phyloseq)
 library(dendextend)
 library(ape)
-library(curatedMetagenomicData)
+library(randomcoloR)
 library(RColorBrewer)
 library(microbiome)
+library(cluster)
+library(hrbrthemes)
 
 ## Setando e verificando o diretório
 
-setwd("/home/fernanda/Documents/")
+setwd("/home/fernanda/Desktop/")
 getwd()
 
 ## Função para transformar dados do metaphlan em dados para phyloseq
@@ -106,7 +108,7 @@ abundancia_metaphlan_phyloseq = metaphlanToPhyloseq(dados_abundancia_metaphlan)
 
 OTU = otu_table(abundancia_metaphlan_phyloseq)
 TAX = tax_table(abundancia_metaphlan_phyloseq)
-SAM = sample_data(dados_metadados, errorIfNULL = TRUE) ###estrutura taxonômica
+SAM = sample_data(dados_metadados, errorIfNULL = TRUE)
 
 head(OTU)
 head(TAX)
@@ -114,7 +116,7 @@ head(SAM)
 
 ## Adicionando dados de amostras ao objeto phyloseq
 
-abundancia_phyloseq = metaphlanToPhyloseq(abundancia_metaphlan_phyloseq, metadat = SAM)
+abundancia_phyloseq = metaphlanToPhyloseq(dados_abundancia_metaphlan, metadat = SAM)
 abundancia_phyloseq
 
 ## Criando a árvore taxonomica
@@ -126,21 +128,33 @@ abundancia_phyloseq = merge_phyloseq(abundancia_phyloseq, random_tree)
 
 ################################################################################
 
+## Espécies e gêneros
+
+loman.sp = subset_taxa(abundancia_phyloseq, !is.na(Species))
+loman.gn = subset_taxa(abundancia_phyloseq, !is.na(Genus))
+
+
+################################################################################
+
 ## Visualização gráfica de abundância de filos e gêneros
 ## Transformando dados
 ## Para gênero trocar o fill = "Phylum" para fill = "Genus"
 
 ps_rel_abund = phyloseq::transform_sample_counts(abundancia_phyloseq, function(x){x / sum(x)})
 
+
 ## Mantendo apenas os mais abundantes em todas as amostras
 top_taxon = genefilter_sample(ps_rel_abund, filterfun_sample(topp(0.30)), A=5)
-summary(keepotu)
+summary(top_taxon)
 ps_rel_abund_top = subset_taxa(ps_rel_abund, top_taxon)
 
+cpalette <- colorRampPalette(brewer.pal(9,name = 'Accent'))(13)
+
 phyloseq::plot_bar(ps_rel_abund_top, fill = "Phylum") +
-  geom_bar(aes(color = Phylum, fill = Phylum), stat = "identity", 
+  geom_bar(aes(fill = Phylum), stat = "identity", 
            position = "stack") +
   labs(x = "", y = "Relative Abundance\n") +
+  theme_ipsum_rc() +
   # facet_wrap(~ sexo, scales = "free") +
   theme(panel.background = element_blank(),
         axis.text.x=element_blank(),
@@ -151,8 +165,8 @@ phyloseq::plot_bar(ps_rel_abund_top, fill = "Phylum") +
         axis.text.x = element_text(angle=90,
                                    hjust=1,  
                                    size=10), axis.text.y =
-          element_text(angle=0, hjust=1, size=10))+
-  scale_fill_hue(c=45, l=50)
+          element_text(angle=0, hjust=1, size=10)) 
+  
 
 ## Salvando gráfico
 
@@ -163,29 +177,30 @@ ggsave("phylum-abundance.svg", width = 10, height = 10, dpi = 300)
 ## Transformando dados
 ## Para gênero trocar o fill = "Phylum" para fill = "Genus"
 
-ps_taxon = phyloseq::tax_glom(abundancia_phyloseq, "Phylum")
-phyloseq::taxa_names(ps_taxon) = phyloseq::tax_table(ps_taxon)[, "Phylum"]
+ps_phylum = phyloseq::tax_glom(abundancia_phyloseq, "Phylum")
+phyloseq::taxa_names(ps_phylum) = phyloseq::tax_table(ps_phylum)[, "Phylum"]
 
 
 phyloseq::psmelt(ps_phylum) %>%
-  ggplot(data = ., aes(x = sample, y = Abundance, fill = OTU)) +
+  ggplot(data = ., aes(x = sexo, y = Abundance, fill = OTU)) +
   geom_boxplot(outlier.shape  = TRUE) +
-  geom_col() +
+  coord_flip()+
   geom_jitter(aes(color = OTU), height = 0, width = .2) +
   labs(x = "", y = "Abundance\n") +
+  theme_ipsum_rc() +
   facet_wrap(~ OTU, scales = "free") +
   theme(legend.text = element_text(size = 10), 
         legend.title=element_text(size=12), 
         plot.title = element_text(size = 12), 
         plot.subtitle = element_text(size = 10, 
                                      color = "darkslategrey"), 
-        axis.text.x = element_text(angle=90,
+        axis.text.x = element_text(angle=0,
                                    hjust=1, 
                                    size=8),         
         axis.text.y = element_text(angle=0, 
                                    hjust=1, 
                                    size=8)) +
-  guides(color=FALSE, fill=FALSE )
+  guides(color=FALSE, fill=FALSE ) 
 
 
 ## Salvando gráfico
@@ -194,6 +209,10 @@ ggsave("phylum-prevalence.svg", width = 10, height = 10, dpi = 300)
 
 
 ################################################################################
+
+## Core  
+
+core_abundance = core_abundance(ps_rel_abund, detection = .1/100, prevalence = 50/100)
 
 ## Criando dendograma de amostras
 
@@ -221,6 +240,7 @@ plot(ward)
 ## PCoA - análise de coordenadas principais baseada em distâncias
 ## Bray é uma forma de calcular as distâncias
 
+dist_bray <- distance(abundancia_phyloseq, method = "bray")
 ord_bray = ordinate(abundancia_phyloseq, method="PCoA", distance=dist_bray)
 samples_infos = data.frame(sample_data(abundancia_phyloseq))
 
@@ -232,75 +252,11 @@ sample_data(abundancia_phyloseq) = samples_infos
 
 pcoa_2_clusters = plot_ordination(abundancia_phyloseq, ord_bray, 
                                   color="bray_cluster_2") + 
-  ggplot2::ggtitle("Bray-Curtis PCoA with 2 Clusters") 
+  ggtitle("Bray-Curtis PCoA with 2 Clusters") 
 
 pcoa_2_clusters
 
-## Plotando visualização com base na abundância de Bacteroides e Prevotella
-## Extraindo os vetores
 
-pc1 = ord_bray$vectors[,1]
-pc2 = ord_bray$vectors[,2]
-
-## Calculando abundancia de Bacteroides e Prevotela
-
-otu_tax = attr(otu_table(abundancia_phyloseq), "dimnames")[[1]]
-abundancia_phyloseq_bact = otu_table(abundancia_phyloseq)[grep("s__Bacteroides", 
-                                                       otu_tax),]
-sum_bacteroides = apply(abundancia_phyloseq_bact, 2, sum)
-
-
-abundancia_phyloseq_prev = as.numeric(otu_table(abundancia_phyloseq))[grep("s__Prevotella", 
-                                                                           otu_tax),]
-sum_prevotella = apply(abundancia_phyloseq_prev, 2, sum)
-
-
-sample_data(df2) = samp
-plot_ordination(abundancia_phyloseq, ord_bray, color="Prevotella")
-
-
-## Ordenando dataframe
-
-abundancia_phyloseq_ordinate = data.frame(pc1, pc2, bact = sum_bacteroides, 
-                                           prev = sum_prevotella, 
-                                           bray2 = as.numeric(samples_infos$bray_cluster_2)+20)
-
-df_bact = abundancia_phyloseq_ordinate[abundancia_phyloseq_ordinate$bray2==21,]
-df_prev = abundancia_phyloseq_ordinate[abundancia_phyloseq_ordinate$bray2==22,]
-
-
-## Criando os plot separados e plotando junto
-
-p = ggplot() 
-
-## Prevotella
-p = p +  geom_point(data= df_prev, aes(x=pc1, y=pc2, shape=factor(bray2), 
-                                        fill=sum_prevotella), shape=21, size=4) +
-  scale_fill_gradient(low="white", high="red",
-                                       guide = guide_colorbar(title="Prevotella \n(cluster 2)"))
-
-
-## Bacteroides
-p = p + geom_point(data=df_bact, aes(x=pc1, y=pc2, shape=factor(bray2), color=bact), 
-                    shape=22, size=4) +
-  scale_color_gradient(low="gray", high="green", 
-                              guide=guide_colorbar(title="Bacteroides \n(cluster 1)"))
-
-## Labels
-p = p + labs(x="Axis 1",y="Axis 2", title="PCoA by selected abundances")
-
-p
-
-
-## PCoA com base em grupos
-## Para mudar o grupo alterar color = "sexo"
-
-p = ggplot(data=sample, aes(x=pc1, y=pc2, shape=sexo,
-                             color=sexo)) 
-p = p + geom_point()
-p = p + labs(x="Axis 1", y="Axis 2", title="PCoA by group")
-
-p
 
 ################################################################################
 
@@ -335,40 +291,6 @@ heatmap = plot_heatmap(loman.filt, method="PCoA", distance="bray", sample.label 
 
 heatmap
 
-
-
-################################################################################
-
-## Histograma de espécies e gêneros
-
-loman.sp = subset_taxa(df2, !is.na(Species))
-
-
-par(mar = c(20, 4, 10, 0) + 0.25) 
-
-histo_species= barplot(sort(taxa_sums(loman.sp), TRUE)[1:20] / nsamples(loman.sp),
-            ylab = "Abundance", 
-            las = 2,
-            col=rgb(0.1,0.1,0.7,0.5) ) +
-  title(main = "20 most abundant species") +
-  theme(plot.title = element_text(size =8))
-
-histo_species
-
-
-loman.gn = subset_taxa(df2, !is.na(Genus))
-
-
-par(mar = c(20, 4, 10, 0) + 0.25) 
-
-histo_genus= barplot(sort(taxa_sums(loman.gn), TRUE)[1:20] / nsamples(loman.gn),
-                    ylab = "Abundance", 
-                    las = 2,
-                    col=rgb(0.1,0.1,0.7,0.5) ) +
-  title(main = "20 most abundant genus") +
-  theme(plot.title = element_text(size =8))
-
-histo_genus
 
 
 
@@ -413,6 +335,7 @@ riqueza_alpha_loman.sp  %>% gather(key = metric, value = value,
                          levels = c("Shannon", "Simpson", "InvSimpson"))) %>%
   ggplot(aes(x = samples, y = value)) +
   geom_boxplot(outlier.color = NA) +
+  theme_ipsum_rc() +
   geom_jitter(aes(color = samples), height = 0, width = .2) +
   labs(x = "", y = "") +
   facet_wrap(~ metric, scales = "free") +
@@ -431,6 +354,7 @@ riqueza_alpha_loman.gn  %>% gather(key = metric, value = value,
   mutate(metric = factor(metric, 
                          levels = c("Shannon", "Simpson", "InvSimpson"))) %>%
   ggplot(aes(x = samples, y = value)) +
+  theme_ipsum_rc() +
   geom_boxplot(outlier.color = NA) +
   geom_jitter(aes(color = samples), height = 0, width = .2) +
   labs(x = "", y = "") +
@@ -465,11 +389,6 @@ rarity = rarity(loman.sp, index = "all")
 coverage = coverage(abundancia_phyloseq, threshold = 0.5)
 
 
-## Core  
-
-core_abundance = core_abundance(loman.sp, detection = .1/100, prevalence = 50/100)
-
-
 ## Medida de diversidade da comunidade.
 
 inequality = inequality(abundancia_phyloseq)
@@ -481,33 +400,11 @@ evenness = evenness(abundancia_phyloseq, "all")
 
 ################################################################################
 
-## Testando diferenças na diversidade alfa com base em grupos
-## É recomendado o teste não paramétrico de Kolmogorov-Smirnov para comparações
-## de dois grupos quando não há covariáveis relevantes.
-
-
-d = meta(abundancia_phyloseq)
-d$diversity = sample_data(abundancia_phyloseq)$diversity
-spl = split(d$diversity, d$Grupos)
-
-## Kolmogorov-Smironv test
-pv = ks.test(spl$F, spl$M,)$p.value
-pv
-
-# Adjust the p-value
-padj = p.adjust(pv)
-
-padj
-
-################################################################################
-
 ## Árvore taxônomica
 
-p = plot_tree(abundancia_phyloseq, color="Samples", shape="seo", 
-              label.tips="Genus", size="Abundance")
+p = plot_tree(abundancia_phyloseq, color="Genus", shape="Phylum", 
+              label.tips="Genus")
 
-p
-
-
+p  +  guides(color=FALSE, fill=FALSE, shape=FALSE ) 
 
 
