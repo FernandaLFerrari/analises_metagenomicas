@@ -330,9 +330,9 @@ riqueza_alpha_loman.gn$samples = row.names(riqueza_alpha_loman.gn)
 
 
 riqueza_alpha_loman.sp  %>% gather(key = metric, value = value, 
-                                   c("Shannon", "Simpson", "InvSimpson")) %>%
+                                   c("Shannon", "Simpson")) %>%
   mutate(metric = factor(metric, 
-                         levels = c("Shannon", "Simpson", "InvSimpson"))) %>%
+                         levels = c("Shannon", "Simpson"))) %>%
   ggplot(aes(x = samples, y = value)) +
   geom_boxplot(outlier.color = NA) +
   theme_ipsum_rc() +
