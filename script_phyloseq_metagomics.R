@@ -300,6 +300,9 @@ heatmap
 
 ## A diversidade alfa (α-diversidade) é definida como a diversidade média de 
 ## espécies em diferentes locais ou habitats dentro de uma escala local.
+## Por padrão é ideal que a diversidade alfa seja calculada pela contagem 
+## absoluta e não relativa. Estimar os reads com base no tamanho das amos-
+## tras ou usar o a função de estimar reads do metaphlan.
 
 ## Shannon - quantifica a incerteza na previsão da identidade da espécie de 
 ## um indivíduo que é retirado aleatoriamente do conjunto de dados.
